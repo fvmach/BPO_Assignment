@@ -4,7 +4,7 @@ exports.handler = async function (context, event, callback) {
 
   // --- CORS Headers ---
   const requestOrigin = event.headers?.origin || '';
-  const allowedOrigins = ['http://localhost:3000', 'https://flex.twilio.com']; // Add your allowed origins here
+  const allowedOrigins = ['http://localhost:3000', 'https://flex.twilio.com'];
   const allowOrigin = allowedOrigins.includes(requestOrigin) ? requestOrigin : '*';
 
   response.appendHeader('Access-Control-Allow-Origin', allowOrigin);
@@ -27,6 +27,7 @@ exports.handler = async function (context, event, callback) {
     console.log('[create-attribution-task] Incoming request:', {
       workflowSid,
       taskAttributes,
+      taskQueueSid: taskAttributes?.transfer_task?.targetSid,
     });
 
     if (!workflowSid || !taskAttributes) {
@@ -40,6 +41,7 @@ exports.handler = async function (context, event, callback) {
       .workspaces(context.TWILIO_WORKSPACE_SID)
       .tasks.create({
         workflowSid,
+        taskChannel: 'bpo_assortment',
         attributes: JSON.stringify(taskAttributes),
       });
 

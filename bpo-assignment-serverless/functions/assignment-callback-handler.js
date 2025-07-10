@@ -20,6 +20,7 @@ exports.handler = async function (context, event, callback) {
     return callback(null, response);
   }
 
+  
   try {
     const {
       TaskSid: attributionTaskSid,
@@ -30,9 +31,11 @@ exports.handler = async function (context, event, callback) {
     console.log('[handle-attribution-assignment-callback] Received event:', {
       attributionTaskSid,
       receivingWorkerSid,
+      rawTaskAttributes: TaskAttributes
     });
 
     if (!attributionTaskSid || !receivingWorkerSid || !TaskAttributes) {
+      console.warn('[handle-attribution-assignment-callback] Missing required fields');
       response.setStatusCode(400);
       response.setBody({
         success: false,
@@ -42,9 +45,13 @@ exports.handler = async function (context, event, callback) {
     }
 
     const attributes = JSON.parse(TaskAttributes);
-    const transferringTaskSid = attributes.transfer_task.taskSid;
+    console.log('[handle-attribution-assignment-callback] Parsed attributes:', attributes);
+
+    const transferringTaskSid = attributes.transfer_task?.taskSid;
+    const originalAttributes = attributes.originalTaskAttributes;
 
     if (!transferringTaskSid) {
+      console.warn('[handle-attribution-assignment-callback] No transferringTaskSid found in transfer_task');
       response.setStatusCode(400);
       response.setBody({
         success: false,
@@ -54,20 +61,25 @@ exports.handler = async function (context, event, callback) {
     }
 
     const updatedAttributes = {
-      ...attributes.originalTaskAttributes,
+      ...originalAttributes,
       transferTo: receivingWorkerSid,
     };
 
-    await client.taskrouter
+    console.log('[handle-attribution-assignment-callback] Updating transferring task SID:', transferringTaskSid);
+    console.log('[handle-attribution-assignment-callback] New attributes:', updatedAttributes);
+
+    const result = await client.taskrouter
       .workspaces(context.TWILIO_WORKSPACE_SID)
       .tasks(transferringTaskSid)
       .update({ attributes: JSON.stringify(updatedAttributes) });
+
+    console.log('[handle-attribution-assignment-callback] Task updated successfully:', result.sid);
 
     response.setStatusCode(200);
     response.setBody({ success: true, updated: true });
     return callback(null, response);
   } catch (err) {
-    console.error('[handle-attribution-assignment-callback] Error:', err);
+    console.error('[handle-attribution-assignment-callback] Error during update:', err);
     response.setStatusCode(500);
     response.setBody({
       success: false,
