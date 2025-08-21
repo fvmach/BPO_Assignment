@@ -13,6 +13,7 @@ class BpoAssignmentPlugin extends BaseFlexPlugin {
     this.originalTransferRequests = new Map();
     this.affiliationToggle = 0;
     this.transferTriggered = new Set();
+    this.transferModes = new Map(); // <-- NEW: Stores transfer mode per (taskSid:transferTo)
   }
 
   init(_flex, manager) {
@@ -34,9 +35,7 @@ class BpoAssignmentPlugin extends BaseFlexPlugin {
       }
 
       // 🚨 Only intercept if this is NOT an attribution task and targetSid is a QUEUE SID (starts with WQ)
-      if (
-        task.taskChannelUniqueName === 'bpo_assortment' || !targetSid.startsWith('WQ')
-      ) {
+      if (task.taskChannelUniqueName === 'bpo_assortment' || !targetSid.startsWith('WQ')) {
         console.log('[BPO Plugin] Skipping attribution task transfer interception. (Either bpo_assortment or not a queue transfer)');
         return original(payload);
       }
@@ -48,6 +47,9 @@ class BpoAssignmentPlugin extends BaseFlexPlugin {
       console.log(' - Target SID:', targetSid);
       console.log(' - Mode:', options?.mode);
 
+      // --- TRACK THE MODE AND TRANSFER TARGET ---
+      const transferKey = `${sid}:${targetSid}`;
+      this.transferModes.set(transferKey, options?.mode || 'WARM'); // Save the mode (default to WARM)
       this.originalTransferRequests.set(sid, { sid, targetSid, options });
 
       const affiliation = this.getNextAffiliation();
@@ -89,7 +91,6 @@ class BpoAssignmentPlugin extends BaseFlexPlugin {
     });
   }
 
-
   registerTaskUpdatedListener(manager) {
     manager.workerClient.on('reservationCreated', reservation => {
       const task = reservation.task;
@@ -128,12 +129,15 @@ class BpoAssignmentPlugin extends BaseFlexPlugin {
                 return;
               }
 
-              console.log('[BPO Plugin] Invoking TransferTask action for task SID:', flexTask.sid, 'to target SID:', transferTo);
+              // --- READ MODE FROM THE MAP, DEFAULT TO WARM ---
+              const mode = this.transferModes.get(transferKey) || 'WARM';
+
+              console.log('[BPO Plugin] Invoking TransferTask action for task SID:', flexTask.sid, 'to target SID:', transferTo, 'with mode:', mode);
 
               await Actions.invokeAction('TransferTask', {
                 task: flexTask,
                 targetSid: transferTo,
-                options: { mode: 'WARM' }, // Can parameterize mode if needed
+                options: { mode }, // use recorded mode
               });
 
               console.log('[BPO Plugin] TransferTask action invoked successfully for task SID:', flexTask.sid);
@@ -162,7 +166,6 @@ class BpoAssignmentPlugin extends BaseFlexPlugin {
       });
     });
   }
-
 
   wrapAcceptTask() {
     console.log('[BPO Plugin] Registering AcceptTask wrapper...');
